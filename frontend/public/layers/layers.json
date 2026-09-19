@@ -1,0 +1,145 @@
+{
+  "source": "data/raw/training_features.tif",
+  "crs": "EPSG:4326",
+  "source_crs": "EPSG:32611",
+  "width": 3292,
+  "height": 3730,
+  "resolution": [
+    100.0,
+    100.0
+  ],
+  "corners": {
+    "topLeft": [
+      -120.03717095080793,
+      40.68790996512679
+    ],
+    "topRight": [
+      -116.14092181157623,
+      40.724684241933026
+    ],
+    "bottomRight": [
+      -116.1806993259869,
+      37.363836641005776
+    ],
+    "bottomLeft": [
+      -119.89676789215099,
+      37.33119286569775
+    ]
+  },
+  "layers": [
+    {
+      "index": 1,
+      "name": "mag_anom_magnetic_anomaly_deviation_from_expected_earth's_magnetic_field",
+      "description": "mag_anom - Magnetic anomaly - deviation from expected Earth's magnetic field",
+      "file": "mag_anom_magnetic_anomaly_deviation_from_expected_earth's_magnetic_field.png"
+    },
+    {
+      "index": 2,
+      "name": "rtp_reduced_to_pole_magnetic_data_magnetic_anomaly_corrected_for_latitude_effects",
+      "description": "rtp - Reduced to pole magnetic data - magnetic anomaly corrected for latitude effects",
+      "file": "rtp_reduced_to_pole_magnetic_data_magnetic_anomaly_corrected_for_latitude_effects.png"
+    },
+    {
+      "index": 3,
+      "name": "tmi_hg_total_magnetic_intensity_horizontal_gradient_rate_of_change_in_horizontal_direction",
+      "description": "tmi_hg - Total magnetic intensity horizontal gradient - rate of change in horizontal direction",
+      "file": "tmi_hg_total_magnetic_intensity_horizontal_gradient_rate_of_change_in_horizontal_direction.png"
+    },
+    {
+      "index": 4,
+      "name": "geod_2ndinv_geodetic_second_invariant_measure_of_strain_rate_tensor_magnitude",
+      "description": "geod_2ndinv - Geodetic second invariant - measure of strain rate tensor magnitude",
+      "file": "geod_2ndinv_geodetic_second_invariant_measure_of_strain_rate_tensor_magnitude.png"
+    },
+    {
+      "index": 5,
+      "name": "iso_grav_anom_slope_isostatic_gravity_anomaly_slope_gradient_of_gravity_after_isostatic_correction",
+      "description": "iso_grav_anom_slope - Isostatic gravity anomaly slope - gradient of gravity after isostatic correction",
+      "file": "iso_grav_anom_slope_isostatic_gravity_anomaly_slope_gradient_of_gravity_after_isostatic_correction.png"
+    },
+    {
+      "index": 6,
+      "name": "tc_tilt_angle_or_total_curvature_magnetic_field_derivative_for_edge_detection",
+      "description": "tc - Tilt angle or total curvature - magnetic field derivative for edge detection",
+      "file": "tc_tilt_angle_or_total_curvature_magnetic_field_derivative_for_edge_detection.png"
+    },
+    {
+      "index": 7,
+      "name": "geod_shearrate_geodetic_shear_rate_rate_of_angular_deformation_from_gps_insar",
+      "description": "geod_shearrate - Geodetic shear rate - rate of angular deformation from GPS/InSAR",
+      "file": "geod_shearrate_geodetic_shear_rate_rate_of_angular_deformation_from_gps_insar.png"
+    },
+    {
+      "index": 8,
+      "name": "geod_dilaterate_geodetic_dilatation_rate_rate_of_volumetric_strain_expansion_contraction",
+      "description": "geod_dilaterate - Geodetic dilatation rate - rate of volumetric strain (expansion/contraction)",
+      "file": "geod_dilaterate_geodetic_dilatation_rate_rate_of_volumetric_strain_expansion_contraction.png"
+    },
+    {
+      "index": 9,
+      "name": "tmi_vg_total_magnetic_intensity_vertical_gradient_rate_of_change_in_vertical_direction",
+      "description": "tmi_vg - Total magnetic intensity vertical gradient - rate of change in vertical direction",
+      "file": "tmi_vg_total_magnetic_intensity_vertical_gradient_rate_of_change_in_vertical_direction.png"
+    },
+    {
+      "index": 10,
+      "name": "deq_n100a15_distance_to_earthquake_n=100km_radius,_a=15\u00b0_azimuth_parameters",
+      "description": "deq_n100a15 - Distance to earthquake (n=100km radius, a=15\u00b0 azimuth parameters)",
+      "file": "deq_n100a15_distance_to_earthquake_n=100km_radius,_a=15\u00b0_azimuth_parameters.png"
+    },
+    {
+      "index": 11,
+      "name": "iso_grav_anom_vg_isostatic_gravity_anomaly_vertical_gradient_vertical_rate_of_change",
+      "description": "iso_grav_anom_vg - Isostatic gravity anomaly vertical gradient - vertical rate of change",
+      "file": "iso_grav_anom_vg_isostatic_gravity_anomaly_vertical_gradient_vertical_rate_of_change.png"
+    },
+    {
+      "index": 12,
+      "name": "det_elev_detrended_elevation_topography_with_regional_trends_removed",
+      "description": "det_elev - Detrended elevation - topography with regional trends removed",
+      "file": "det_elev_detrended_elevation_topography_with_regional_trends_removed.png"
+    },
+    {
+      "index": 13,
+      "name": "iso_grav_anom_isostatic_gravity_anomaly_gravity_after_compensating_for_topographic_mass",
+      "description": "iso_grav_anom - Isostatic gravity anomaly - gravity after compensating for topographic mass",
+      "file": "iso_grav_anom_isostatic_gravity_anomaly_gravity_after_compensating_for_topographic_mass.png"
+    },
+    {
+      "index": 14,
+      "name": "tmi_total_magnetic_intensity_total_strength_of_magnetic_field",
+      "description": "tmi - Total magnetic intensity - total strength of magnetic field",
+      "file": "tmi_total_magnetic_intensity_total_strength_of_magnetic_field.png"
+    },
+    {
+      "index": 15,
+      "name": "depth_to_base_surf_depth_to_basement_surface_thickness_of_sedimentary_cover",
+      "description": "depth_to_base_surf - Depth to basement surface - thickness of sedimentary cover",
+      "file": "depth_to_base_surf_depth_to_basement_surface_thickness_of_sedimentary_cover.png"
+    },
+    {
+      "index": 16,
+      "name": "ieq_n100a15_earthquake_intensity_or_density_n=100km_radius,_a=15\u00b0_parameters",
+      "description": "ieq_n100a15 - Earthquake intensity or density (n=100km radius, a=15\u00b0 parameters)",
+      "file": "ieq_n100a15_earthquake_intensity_or_density_n=100km_radius,_a=15\u00b0_parameters.png"
+    },
+    {
+      "index": 17,
+      "name": "cond_surf_conductivity_surface_electrical_conductivity_of_subsurface",
+      "description": "cond_surf - Conductivity surface - electrical conductivity of subsurface",
+      "file": "cond_surf_conductivity_surface_electrical_conductivity_of_subsurface.png"
+    },
+    {
+      "index": 18,
+      "name": "iso_grav_anom_hg_isostatic_gravity_anomaly_horizontal_gradient_horizontal_rate_of_change",
+      "description": "iso_grav_anom_hg - Isostatic gravity anomaly horizontal gradient - horizontal rate of change",
+      "file": "iso_grav_anom_hg_isostatic_gravity_anomaly_horizontal_gradient_horizontal_rate_of_change.png"
+    },
+    {
+      "index": 19,
+      "name": "det_elev_slope_detrended_elevation_slope_gradient_of_elevation_after_detrending",
+      "description": "det_elev_slope - Detrended elevation slope - gradient of elevation after detrending",
+      "file": "det_elev_slope_detrended_elevation_slope_gradient_of_elevation_after_detrending.png"
+    }
+  ]
+}

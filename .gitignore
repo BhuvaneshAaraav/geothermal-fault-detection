@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Large training data
+data/raw/
+data/processed/
+
+# Models
+models/
+
+# Generated outputs
+outputs/
+
+# Large ML files
+*.npy
+*.pt
+*.joblib

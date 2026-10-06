@@ -7,11 +7,11 @@ import {
   NavigationControl,
   FullscreenControl,
   Popup,
+  setWorkerUrl,
 } from "maplibre-gl";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-
-/* =========================================================
+setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");/* =========================================================
    TYPES
 ========================================================= */
 
@@ -279,6 +279,7 @@ export default function GeoMap() {
       null
     );
 
+
   const mapRef =
     useRef<Map | null>(null);
 
@@ -368,7 +369,215 @@ const candidateFocusMarkerRef =
     } | null>(null);
 
 
+  /* =======================================================
+     3D SUBSURFACE VIEW
+  ======================================================= */
 
+  const [
+    subsurfaceCandidate,
+    setSubsurfaceCandidate,
+  ] = useState<{
+    latitude: number;
+    longitude: number;
+    rank?: number;
+    score?: number;
+  } | null>(null);
+
+  const [
+    subsurfaceOpen,
+    setSubsurfaceOpen,
+  ] = useState(false);
+
+  const [
+    subsurfaceFullscreen,
+    setSubsurfaceFullscreen,
+  ] = useState(false);
+
+  function openSubsurfaceView(
+    latitude: number,
+    longitude: number,
+    rank?: number,
+    score?: number
+  ) {
+    setSubsurfaceCandidate({
+      latitude,
+      longitude,
+      rank,
+      score,
+    });
+
+    setSubsurfaceFullscreen(false);
+    setSubsurfaceOpen(true);
+  }
+
+  function closeSubsurfaceView() {
+    setSubsurfaceFullscreen(false);
+    setSubsurfaceOpen(false);
+  }
+
+  useEffect(() => {
+    if (!subsurfaceFullscreen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSubsurfaceFullscreen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [subsurfaceFullscreen]);
+
+  function buildSubsurfaceProfile(
+    candidate: {
+      latitude: number;
+      longitude: number;
+      rank?: number;
+      score?: number;
+    }
+  ) {
+    const seedSource =
+      Math.abs(candidate.latitude * 1000003) +
+      Math.abs(candidate.longitude * 9176.37) +
+      Math.abs((candidate.rank ?? 0) * 31.17) +
+      Math.abs((candidate.score ?? 0) * 10000);
+
+    const frac = (n: number) => {
+      const x = Math.sin(seedSource + n * 12.9898) * 43758.5453;
+      return x - Math.floor(x);
+    };
+
+    const surfaceX = 250 + frac(1) * 430;
+    const surfaceY = 185 + frac(2) * 48;
+    const dipDeg = 25 + frac(3) * 35;
+    const strikeDeg = Math.round(frac(4) * 180);
+    const reservoirDepthKm = 2.0 + frac(5) * 2.5;
+    const faultWidth = 105 + frac(6) * 60;
+    const faultBottomX =
+      Math.max(250, Math.min(740, surfaceX + (frac(7) - 0.45) * 250));
+    const reservoirX = Math.max(360, Math.min(760, faultBottomX + (frac(8) - 0.5) * 130));
+    const reservoirY = 470 + frac(9) * 45;
+
+    const topFaultY = surfaceY + 30;
+    const bottomFaultY = 590;
+
+    const topLeft = surfaceX - faultWidth / 2;
+    const topRight = surfaceX + faultWidth / 2;
+    const bottomLeft = faultBottomX - faultWidth * 0.72;
+    const bottomRight = faultBottomX + faultWidth * 0.72;
+
+    const flowXs = [0.18, 0.38, 0.58, 0.78].map(
+      (t) =>
+        surfaceX +
+        (faultBottomX - surfaceX) * t +
+        (frac(20 + t * 10) - 0.5) * 18
+    );
+
+    const flowYs = [0.22, 0.42, 0.62, 0.82].map(
+      (t) => topFaultY + (bottomFaultY - topFaultY) * t
+    );
+
+    const layerJitter = [
+      0,
+      -8 + frac(30) * 16,
+      -5 + frac(31) * 18,
+      -7 + frac(32) * 20,
+      -4 + frac(33) * 16,
+    ];
+
+    return {
+      surfaceX,
+      surfaceY,
+      dipDeg,
+      strikeDeg,
+      reservoirDepthKm,
+      reservoirX,
+      reservoirY,
+      topLeft,
+      topRight,
+      bottomLeft,
+      faultBottomX,
+      bottomRight,
+      topFaultY,
+      bottomFaultY,
+      flowXs,
+      flowYs,
+      layerJitter,
+    };
+  }
+
+
+/* =====================================================
+   3D TERRAIN CONTROLS
+===================================================== */
+
+const enable3DTerrain = () => {
+  const map = mapRef.current;
+
+  if (!map || !mapReadyRef.current) {
+    return;
+  }
+
+  try {
+    // Add DEM source only once
+    if (!map.getSource("geodawn-terrain")) {
+      map.addSource("geodawn-terrain", {
+        type: "raster-dem",
+        url: "https://tiles.mapterhorn.com/tilejson.json",
+        tileSize: 256,
+      });
+    }
+
+    // Turn on real terrain
+    map.setTerrain({
+      source: "geodawn-terrain",
+      exaggeration: 1.5,
+    });
+
+    // Tilt the live map
+    map.easeTo({
+      pitch: 60,
+      bearing: 15,
+      duration: 1200,
+      essential: true,
+    });
+
+  } catch (error) {
+    console.error(
+      "GeoDAWN 3D terrain error:",
+      error
+    );
+  }
+};
+
+
+const disable3DTerrain = () => {
+  const map = mapRef.current;
+
+  if (!map || !mapReadyRef.current) {
+    return;
+  }
+
+  try {
+    map.setTerrain(null);
+
+    map.easeTo({
+      pitch: 0,
+      bearing: 0,
+      duration: 1000,
+      essential: true,
+    });
+
+  } catch (error) {
+    console.error(
+      "GeoDAWN 2D terrain error:",
+      error
+    );
+  }
+};
 
     
     /* =========================================================
@@ -811,11 +1020,17 @@ function openCandidatePopup(
     element.addEventListener("click", (event) => {
       event.stopPropagation();
 
+      openSubsurfaceView(
+        latitude,
+        longitude,
+        candidate.properties.rank,
+        candidate.properties.score
+      );
+
       openCandidatePopup(
         candidate,
         searchedLatitude,
-        searchedLongitude,
-        distance
+        searchedLongitude
       );
     });
 
@@ -1359,7 +1574,7 @@ map.on("load", () => {
       search.latitude,
       search.longitude,
       search.radiusKm ??
-        DEFAULT_RADIUS_KM
+        DEFAULT_RADIUS
     );
   }
 });
@@ -1496,12 +1711,16 @@ useEffect(() => {
       return;
     }
 
-    map.flyTo({
-      center: [longitude, latitude],
-      zoom: 11,
-      duration: 1200,
-      essential: true,
-    });
+   enable3DTerrain();
+
+map.flyTo({
+  center: [longitude, latitude],
+  zoom: 11,
+  pitch: 60,
+  bearing: 15,
+  duration: 1600,
+  essential: true,
+});
 
     /*
      * Remove previous focus marker
@@ -1542,6 +1761,13 @@ useEffect(() => {
       .addTo(map);
 
     candidateFocusMarkerRef.current = marker;
+
+    openSubsurfaceView(
+      latitude,
+      longitude,
+      detail.rank,
+      detail.score
+    );
 
     const rank = detail.rank;
     const score = detail.score;
@@ -1731,6 +1957,13 @@ useEffect(() => {
         );
 
       if (candidate) {
+        openSubsurfaceView(
+          latitude,
+          longitude,
+          candidate.properties.rank,
+          candidate.properties.score
+        );
+
         openCandidatePopup(
           candidate,
 
@@ -1739,6 +1972,11 @@ useEffect(() => {
 
           searchInfo?.longitude ??
             longitude
+        );
+      } else {
+        openSubsurfaceView(
+          latitude,
+          longitude
         );
       }
     };
@@ -1912,341 +2150,920 @@ useEffect(() => {
 ]);
 
     /* =======================================================
-     RENDER
-  ======================================================= */
+       RENDER
+    ======================================================= */
 
-  return (
-    <div className="relative w-full">
+    return (
+      <div className="relative w-full">
 
-      {/* =====================================================
-          MAP
-      ===================================================== */}
+        {/* =====================================================
+            LIVE MAP
+        ===================================================== */}
 
-      <div className="relative">
+        <div
+          ref={mapContainerRef}
+          className="relative h-[560px] w-full overflow-hidden rounded-xl border border-white/10 bg-[#07111f]"
+        />
 
-  <div
-    ref={mapContainerRef}
-    className="relative h-[560px] w-full overflow-hidden rounded-xl border border-white/10 bg-[#07111f]"
-  />
+        {/* =====================================================
+            3D SUBSURFACE / 2D CONTROLS
+        ===================================================== */}
 
-  {/* =====================================================
-    ACTIVE GEOPHYSICAL LAYER
-===================================================== */}
+        <div className="absolute right-4 top-4 z-20 flex flex-col gap-2">
 
-{!loading && metadata && (() => {
-  const activeLayer = metadata.layers.find(
-    (layer) =>
-      String(layer.index) ===
-      String(selectedLayer)
-  );
+          <button
+            type="button"
+            onClick={() => {
+              if (subsurfaceCandidate) {
+                setSubsurfaceOpen(true);
+              }
+            }}
+            disabled={!subsurfaceCandidate}
+            className={`rounded-lg border px-3 py-2 text-xs font-semibold shadow-lg backdrop-blur-md transition ${
+              subsurfaceCandidate
+                ? "border-white/20 bg-[#07111f]/90 text-white hover:bg-[#10223a]"
+                : "cursor-not-allowed border-white/10 bg-[#07111f]/60 text-slate-500"
+            }`}
+          >
+            3D Subsurface
+          </button>
 
-  if (!activeLayer) return null;
-
-  const category =
-    activeLayer.index === 10 ||
-    activeLayer.index === 16
-      ? "Seismic"
-      : activeLayer.index === 17
-      ? "Electrical"
-      : activeLayer.index === 15
-      ? "Geology"
-      : activeLayer.index === 12 ||
-        activeLayer.index === 19
-      ? "Topography"
-      : activeLayer.index === 4 ||
-        activeLayer.index === 7 ||
-        activeLayer.index === 8
-      ? "Geodetic"
-      : activeLayer.index === 5 ||
-        activeLayer.index === 11 ||
-        activeLayer.index === 13 ||
-        activeLayer.index === 18
-      ? "Gravity"
-      : "Magnetic";
-
-  const cleanName = activeLayer.name
-    .split("_")
-    .slice(1)
-    .join(" ")
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-return (
-  <div className="absolute left-4 top-4 z-10 w-[320px] rounded-xl border border-white/70 bg-white/95 p-4 shadow-xl backdrop-blur-md">
-
-    {/* HEADER */}
-
-    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-      Geophysical Layer
-    </div>
-
-    {/* BAND + NAME */}
-
-    <div className="mt-2 flex items-start gap-3">
-
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#eef2ff] text-xs font-bold text-[#3157d5]">
-        {String(activeLayer.index).padStart(2, "0")}
-      </div>
-
-      <div className="min-w-0">
-
-        <div className="text-sm font-bold text-[#10245c]">
-          Band {activeLayer.index}
-        </div>
-
-        <div className="mt-0.5 text-sm font-semibold leading-5 text-slate-700">
-          {cleanName}
-        </div>
-
-      </div>
-
-    </div>
-
-    {/* WHAT THIS LAYER REPRESENTS */}
-
-    <div className="mt-4 rounded-xl border border-[#dbe5ff] bg-[#f5f7ff] p-4">
-
-      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#3157d5]">
-        What this layer represents
-      </div>
-
-      <p className="mt-2 text-sm font-semibold leading-6 text-[#172554]">
-        {activeLayer.description}
-      </p>
-
-    </div>
-
-    {/* LAYER DETAILS */}
-
-    <div className="mt-3 grid grid-cols-2 gap-2">
-
-      {/* CATEGORY */}
-
-      <div className="rounded-lg bg-slate-50 px-3 py-2">
-
-        <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-          Category
-        </div>
-
-        <div className="mt-0.5 text-xs font-semibold text-slate-700">
-          {category}
-        </div>
-
-      </div>
-
-      {/* RESOLUTION */}
-
-      <div className="rounded-lg bg-slate-50 px-3 py-2">
-
-        <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-          Resolution
-        </div>
-
-        <div className="mt-0.5 text-xs font-semibold text-slate-700">
-          100 m
-        </div>
-
-      </div>
-
-    </div>
-
-  </div>
-);
-})()}
-
-</div>
-
-      {/* =====================================================
-          LOADING OVERLAY
-      ===================================================== */}
-
-      {loading && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-[#07111f]/90 backdrop-blur-sm">
-
-          <div className="text-center">
-
-            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500" />
-
-            <p className="text-sm font-medium text-slate-300">
-              Loading GeoDAWN...
-            </p>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Loading candidates and geophysical layers
-            </p>
-
-          </div>
+          <button
+            type="button"
+            onClick={closeSubsurfaceView}
+            className="rounded-lg border border-white/20 bg-white/95 px-3 py-2 text-xs font-semibold text-[#172554] shadow-lg backdrop-blur-md transition hover:bg-white"
+          >
+            2D Map
+          </button>
 
         </div>
-      )}
 
-      {/* =====================================================
-          ERROR
-      ===================================================== */}
+        {/* =====================================================
+            ACTIVE GEOPHYSICAL LAYER
+        ===================================================== */}
 
-      {error && (
-        <div className="absolute left-4 right-4 top-4 z-30 rounded-lg border border-red-500/30 bg-red-950/90 px-4 py-3 text-sm text-red-200 backdrop-blur">
-          <div className="font-semibold">
-            GeoDAWN data error
-          </div>
+        {!loading && metadata && (() => {
 
-          <div className="mt-1 text-xs text-red-300">
-            {error}
-          </div>
-        </div>
-      )}
+          const activeLayer =
+            metadata.layers.find(
+              (layer) =>
+                String(layer.index) ===
+                String(selectedLayer)
+            );
 
-      {/* =====================================================
-          GEOPHYSICAL LAYER CONTROL
-      ===================================================== */}
+          if (!activeLayer) {
+            return null;
+          }
 
-      {!loading && metadata && (
-        <div className="mt-4 rounded-xl border border-white/10 bg-[#07111f] p-5">
+          const category =
+            activeLayer.index === 10 ||
+            activeLayer.index === 16
+              ? "Seismic"
+              : activeLayer.index === 17
+              ? "Electrical"
+              : activeLayer.index === 15
+              ? "Geology"
+              : activeLayer.index === 12 ||
+                activeLayer.index === 19
+              ? "Topography"
+              : activeLayer.index === 4 ||
+                activeLayer.index === 7 ||
+                activeLayer.index === 8
+              ? "Geodetic"
+              : activeLayer.index === 5 ||
+                activeLayer.index === 11 ||
+                activeLayer.index === 13 ||
+                activeLayer.index === 18
+              ? "Gravity"
+              : "Magnetic";
 
-          <div className="mb-4 flex items-center justify-between">
+          const cleanName =
+            activeLayer.name
+              .split("_")
+              .slice(1)
+              .join(" ")
+              .replace(/_/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
 
-            <div>
+          return (
+            <div className="absolute left-4 top-4 z-10 w-[320px] rounded-xl border border-white/70 bg-white/95 p-4 shadow-xl backdrop-blur-md">
 
-              <h3 className="text-sm font-semibold text-white">
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
                 Geophysical Layer
-              </h3>
+              </div>
 
-              <p className="mt-1 text-xs text-slate-400">
-                Visualize one of the 19 input geophysical bands.
+              <div className="mt-2 flex items-start gap-3">
+
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#eef2ff] text-xs font-bold text-[#3157d5]">
+                  {String(
+                    activeLayer.index
+                  ).padStart(2, "0")}
+                </div>
+
+                <div className="min-w-0">
+
+                  <div className="text-sm font-bold text-[#10245c]">
+                    Band {activeLayer.index}
+                  </div>
+
+                  <div className="mt-0.5 text-sm font-semibold leading-5 text-slate-700">
+                    {cleanName}
+                  </div>
+
+                </div>
+
+              </div>
+
+              <div className="mt-4 rounded-xl border border-[#dbe5ff] bg-[#f5f7ff] p-4">
+
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#3157d5]">
+                  What this layer represents
+                </div>
+
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#172554]">
+                  {activeLayer.description}
+                </p>
+
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    Category
+                  </div>
+
+                  <div className="mt-0.5 text-xs font-semibold text-slate-700">
+                    {category}
+                  </div>
+
+                </div>
+
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    Resolution
+                  </div>
+
+                  <div className="mt-0.5 text-xs font-semibold text-slate-700">
+                    100 m
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+          );
+
+        })()}
+
+        {/* =====================================================
+            LOADING
+        ===================================================== */}
+
+        {loading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-[#07111f]/90 backdrop-blur-sm">
+
+            <div className="text-center">
+
+              <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500" />
+
+              <p className="text-sm font-medium text-slate-300">
+                Loading GeoDAWN...
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Loading candidates and geophysical layers
               </p>
 
             </div>
 
-            <div className="text-xs text-slate-500">
-              {metadata.width} × {metadata.height}
+          </div>
+        )}
+
+        {/* =====================================================
+            ERROR
+        ===================================================== */}
+
+        {error && (
+          <div className="absolute left-4 right-4 top-4 z-30 rounded-lg border border-red-500/30 bg-red-950/90 px-4 py-3 text-sm text-red-200 backdrop-blur">
+
+            <div className="font-semibold">
+              GeoDAWN data error
+            </div>
+
+            <div className="mt-1 text-xs text-red-300">
+              {error}
             </div>
 
           </div>
+        )}
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        {/* =====================================================
+            GEOPHYSICAL LAYER CONTROL
+        ===================================================== */}
 
-            <select
-              value={selectedLayer}
-              onChange={(event) =>
-                setSelectedLayer(event.target.value)
-              }
-              className="h-10 flex-1 rounded-lg border border-white/10 bg-[#0b1728] px-3 text-sm text-slate-200 outline-none transition focus:border-blue-500"
-            >
-              {metadata.layers.map((layer) => (
-                <option
-                  key={layer.index}
-                  value={String(layer.index)}
-                >
-                  {String(layer.index).padStart(2, "0")} —{" "}
-                  {layer.description}
-                </option>
-              ))}
-            </select>
+        {!loading && metadata && (
+          <div className="mt-4 rounded-xl border border-white/10 bg-[#07111f] p-5">
 
-            <div className="flex items-center gap-3 md:w-64">
+            <div className="mb-4 flex items-center justify-between">
 
-              <span className="whitespace-nowrap text-xs text-slate-400">
-                Opacity
-              </span>
+              <div>
 
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={layerOpacity}
+                <h3 className="text-sm font-semibold text-white">
+                  Geophysical Layer
+                </h3>
+
+                <p className="mt-1 text-xs text-slate-400">
+                  Visualize one of the 19 input geophysical bands.
+                </p>
+
+              </div>
+
+              <div className="text-xs text-slate-500">
+                {metadata.width} × {metadata.height}
+              </div>
+
+            </div>
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+
+              <select
+                value={selectedLayer}
                 onChange={(event) =>
-                  setLayerOpacity(
-                    Number(event.target.value)
+                  setSelectedLayer(
+                    event.target.value
                   )
                 }
-                className="w-full"
-              />
+                className="h-10 flex-1 rounded-lg border border-white/10 bg-[#0b1728] px-3 text-sm text-slate-200 outline-none transition focus:border-blue-500"
+              >
 
-              <span className="w-10 text-right text-xs text-slate-400">
-                {Math.round(layerOpacity * 100)}%
-              </span>
+                {metadata.layers.map(
+                  (layer) => (
+
+                    <option
+                      key={layer.index}
+                      value={String(layer.index)}
+                    >
+                      {String(
+                        layer.index
+                      ).padStart(2, "0")}{" "}
+                      —{" "}
+                      {layer.description}
+                    </option>
+
+                  )
+                )}
+
+              </select>
+
+              <div className="flex items-center gap-3 md:w-64">
+
+                <span className="whitespace-nowrap text-xs text-slate-400">
+                  Opacity
+                </span>
+
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={layerOpacity}
+                  onChange={(event) =>
+                    setLayerOpacity(
+                      Number(
+                        event.target.value
+                      )
+                    )
+                  }
+                  className="w-full"
+                />
+
+                <span className="w-10 text-right text-xs text-slate-400">
+                  {Math.round(
+                    layerOpacity * 100
+                  )}%
+                </span>
+
+              </div>
+
+            </div>
+
+            {metadata.layers.find(
+              (layer) =>
+                String(layer.index) ===
+                selectedLayer
+            ) && (
+              <p className="mt-3 text-xs text-slate-500">
+
+                {
+                  metadata.layers.find(
+                    (layer) =>
+                      String(layer.index) ===
+                      selectedLayer
+                  )?.description
+                }
+
+              </p>
+            )}
+
+          </div>
+        )}
+
+        {/* =====================================================
+            SEARCH INFORMATION
+        ===================================================== */}
+
+        {searchInfo && (
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+
+            <div className="rounded-xl border border-white/10 bg-[#07111f] p-4">
+
+              <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                Location
+              </div>
+
+              <div className="mt-2 text-sm font-semibold text-white">
+                {searchInfo.locationName}
+              </div>
+
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-[#07111f] p-4">
+
+              <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                Coordinates
+              </div>
+
+              <div className="mt-2 text-sm font-semibold text-white">
+                {searchInfo.latitude.toFixed(6)}
+                {", "}
+                {searchInfo.longitude.toFixed(6)}
+              </div>
+
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-[#07111f] p-4">
+
+              <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                Search Radius
+              </div>
+
+              <div className="mt-2 text-sm font-semibold text-white">
+                {searchInfo.radiusKm} km
+              </div>
+
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-[#07111f] p-4">
+
+              <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                Nearby Candidates
+              </div>
+
+              <div className="mt-2 text-sm font-semibold text-white">
+                {searchInfo.nearbyCount.toLocaleString()}
+              </div>
 
             </div>
 
           </div>
+        )}
 
-          {metadata.layers.find(
-            (layer) =>
-              String(layer.index) === selectedLayer
-          ) && (
-            <p className="mt-3 text-xs text-slate-500">
-              {
-                metadata.layers.find(
-                  (layer) =>
-                    String(layer.index) === selectedLayer
-                )?.description
-              }
-            </p>
-          )}
+        {/* =====================================================
+            CONCEPTUAL 3D GEOLOGICAL SUBSURFACE
+        ===================================================== */}
 
-        </div>
-      )}
+        {subsurfaceOpen && subsurfaceCandidate && (() => {
+          const profile = buildSubsurfaceProfile(subsurfaceCandidate);
 
-      {/* =====================================================
-          SEARCH INFORMATION
-      ===================================================== */}
+          const layerY = [
+            260,
+            330 + profile.layerJitter[1],
+            395 + profile.layerJitter[2],
+            465 + profile.layerJitter[3],
+            535 + profile.layerJitter[4],
+            600,
+          ];
 
-      {searchInfo && (
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          const blockLeft = 105;
+          const blockRight = 895;
+          const surfaceBackLeft = 240;
+          const surfaceBackRight = 760;
+          const surfaceBackY = 140;
 
-          <div className="rounded-xl border border-white/10 bg-[#07111f] p-4">
+          const fullscreenClass = subsurfaceFullscreen
+            ? "fixed inset-0 z-[9999] overflow-hidden bg-[#07111f]"
+            : "absolute inset-0 z-50 overflow-hidden rounded-xl bg-[#07111f]/96 backdrop-blur-md";
 
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">
-              Location
+          return (
+            <div className={fullscreenClass}>
+
+              <div className="flex h-full flex-col">
+
+                {/* HEADER */}
+
+                <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-300">
+                      Conceptual subsurface model
+                    </div>
+
+                    <h3 className="mt-1 text-lg font-bold text-white">
+                      Candidate geological structure
+                    </h3>
+
+                    <p className="mt-1 max-w-3xl text-xs text-slate-400">
+                      Approximate 3D geological cross-section generated from this candidate's location and model score.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSubsurfaceFullscreen(
+                          !subsurfaceFullscreen
+                        )
+                      }
+                      className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
+                    >
+                      {subsurfaceFullscreen
+                        ? "Exit full view"
+                        : "Full view"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={closeSubsurfaceView}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-lg text-slate-300 transition hover:bg-white/10"
+                      aria-label="Close 3D view"
+                    >
+                      ×
+                    </button>
+
+                  </div>
+
+                </div>
+
+                {/* CONTENT */}
+
+                <div className="min-h-0 flex-1 overflow-auto p-3 md:p-5">
+
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+
+                    {/* 3D GEOLOGICAL BLOCK */}
+
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#091421]">
+
+                      <div className="border-b border-white/10 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-xs font-semibold text-white">
+                            Geological cross-section
+                          </div>
+
+                          <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold text-cyan-200">
+                            CONCEPTUAL — NOT MEASURED
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-2 md:p-4">
+
+                        <svg
+                          viewBox="0 0 1000 650"
+                          className="h-auto w-full"
+                          role="img"
+                          aria-label="Approximate 3D geological cross-section for the selected GeoDAWN candidate"
+                        >
+
+                          <defs>
+                            <linearGradient id="reservoirGradient" x1="0" x2="1" y1="0" y2="1">
+                              <stop offset="0%" stopColor="#ffb36b" stopOpacity="0.95" />
+                              <stop offset="100%" stopColor="#c2410c" stopOpacity="0.85" />
+                            </linearGradient>
+                          </defs>
+
+                          <rect
+                            x="0"
+                            y="0"
+                            width="1000"
+                            height="650"
+                            fill="#091421"
+                          />
+
+                          {/* BACK SURFACE */}
+
+                          <polygon
+                            points={`${surfaceBackLeft},${surfaceBackY} ${surfaceBackRight},${surfaceBackY - 25} 900,205 320,250`}
+                            fill="#d8cfb3"
+                            stroke="#e2e8f0"
+                            strokeWidth="2"
+                          />
+
+                          {/* TOP SURFACE */}
+
+                          <polygon
+                            points={`100,210 ${surfaceBackLeft},${surfaceBackY} ${surfaceBackRight},${surfaceBackY - 25} 900,225 315,300`}
+                            fill="#b69d70"
+                            stroke="#f1ead8"
+                            strokeWidth="2"
+                          />
+
+                          {/* SURFACE CONTOURS */}
+
+                          <path
+                            d={`M120 222 C270 197, 390 230, 510 195 S760 175, 875 226`}
+                            fill="none"
+                            stroke="#f7f0dc"
+                            strokeWidth="7"
+                            opacity="0.65"
+                          />
+
+                          <path
+                            d={`M140 247 C280 223, 395 254, 530 220 S760 204, 850 247`}
+                            fill="none"
+                            stroke="#78694f"
+                            strokeWidth="4"
+                            opacity="0.7"
+                          />
+
+                          {/* LAYER FRONT FACES */}
+
+                          <polygon
+                            points={`100,210 315,300 900,225 895,330 315,395 100,300`}
+                            fill="#c8a36e"
+                            stroke="#8d6e49"
+                            strokeWidth="1.5"
+                          />
+
+                          <polygon
+                            points={`100,300 315,395 895,330 895,400 315,465 100,390`}
+                            fill="#a97c58"
+                            stroke="#78563d"
+                            strokeWidth="1.5"
+                          />
+
+                          <polygon
+                            points={`100,390 315,465 895,400 895,470 315,535 100,460`}
+                            fill="#64777c"
+                            stroke="#42545a"
+                            strokeWidth="1.5"
+                          />
+
+                          <polygon
+                            points={`100,460 315,535 895,470 895,535 315,600 100,525`}
+                            fill="#4d626d"
+                            stroke="#334650"
+                            strokeWidth="1.5"
+                          />
+
+                          <polygon
+                            points={`100,525 315,600 895,535 895,595 315,650 100,590`}
+                            fill="#344454"
+                            stroke="#202d3a"
+                            strokeWidth="1.5"
+                          />
+
+                          {/* LEFT SIDE FACE */}
+
+                          <polygon
+                            points="100,210 315,300 315,600 100,525"
+                            fill="#896f52"
+                            stroke="#d7dde5"
+                            strokeWidth="2"
+                          />
+
+                          <polygon
+                            points="100,300 315,395 315,465 100,390"
+                            fill="#9b704d"
+                          />
+
+                          <polygon
+                            points="100,390 315,465 315,535 100,460"
+                            fill="#52656b"
+                          />
+
+                          <polygon
+                            points="100,460 315,535 315,600 100,525"
+                            fill="#435763"
+                          />
+
+                          {/* DYNAMIC HOT RESERVOIR */}
+
+                          <ellipse
+                            cx={profile.reservoirX}
+                            cy={profile.reservoirY}
+                            rx={105 + profile.strikeDeg % 35}
+                            ry="42"
+                            fill="url(#reservoirGradient)"
+                            opacity="0.9"
+                          />
+
+                          <ellipse
+                            cx={profile.reservoirX - 12}
+                            cy={profile.reservoirY - 4}
+                            rx="55"
+                            ry="20"
+                            fill="#fde68a"
+                            opacity="0.34"
+                          />
+
+                          {/* DYNAMIC FAULT PLANE */}
+
+                          <polygon
+                            points={`${profile.topLeft},${profile.topFaultY} ${profile.topRight},${profile.topFaultY - 4} ${profile.bottomRight},${profile.bottomFaultY} ${profile.bottomLeft},${profile.bottomFaultY}`}
+                            fill="#ef4444"
+                            fillOpacity="0.62"
+                            stroke="#fecaca"
+                            strokeWidth="2"
+                          />
+
+                          {/* FAULT CENTER LINE */}
+
+                          <line
+                            x1={profile.surfaceX}
+                            y1={profile.topFaultY}
+                            x2={profile.faultBottomX}
+                            y2={profile.bottomFaultY}
+                            stroke="#7f1d1d"
+                            strokeWidth="5"
+                            opacity="0.65"
+                          />
+
+                          {/* CONCEPTUAL FLOW */}
+
+                          <g fill="#67e8f9" stroke="#083344" strokeWidth="1">
+                            {profile.flowXs.map((x, i) => {
+                              const y = profile.flowYs[i];
+                              const nextY = y - 12;
+                              return (
+                                <path
+                                  key={`flow-${i}`}
+                                  d={`M ${x} ${y + 16} L ${x} ${nextY} l -9 11 h 18 z`}
+                                  opacity={0.55 + i * 0.1}
+                                />
+                              );
+                            })}
+                          </g>
+
+                          {/* CANDIDATE */}
+
+                          <circle
+                            cx={profile.surfaceX}
+                            cy={profile.surfaceY}
+                            r="14"
+                            fill="#3b82f6"
+                            stroke="white"
+                            strokeWidth="5"
+                          />
+
+                          <circle
+                            cx={profile.surfaceX}
+                            cy={profile.surfaceY}
+                            r="25"
+                            fill="none"
+                            stroke="#60a5fa"
+                            strokeWidth="3"
+                            opacity="0.55"
+                            className="animate-pulse"
+                          />
+
+                          {/* DEPTH GUIDES */}
+
+                          <g stroke="#94a3b8" strokeDasharray="6 8" opacity="0.35">
+                            <line x1="65" y1={layerY[1]} x2="930" y2={layerY[1]} />
+                            <line x1="65" y1={layerY[2]} x2="930" y2={layerY[2]} />
+                            <line x1="65" y1={layerY[3]} x2="930" y2={layerY[3]} />
+                            <line x1="65" y1={layerY[4]} x2="930" y2={layerY[4]} />
+                          </g>
+
+                          {/* LABELS */}
+
+                          <g
+                            fontFamily="system-ui, -apple-system, sans-serif"
+                            fontSize="18"
+                            fontWeight="700"
+                          >
+                            <text x="118" y="190" fill="#f8fafc">SURFACE</text>
+
+                            <text
+                              x={Math.min(760, profile.surfaceX + 28)}
+                              y={profile.surfaceY - 12}
+                              fill="#fca5a5"
+                            >
+                              CANDIDATE
+                            </text>
+
+                            <text x="665" y="290" fill="#f8fafc">
+                              SEDIMENTARY / WEATHERED
+                            </text>
+
+                            <text x="690" y="380" fill="#e2e8f0">
+                              FRACTURED ROCK
+                            </text>
+
+                            <text x="700" y="450" fill="#e2e8f0">
+                              COMPETENT ROCK
+                            </text>
+
+                            <text
+                              x={Math.max(620, profile.reservoirX - 90)}
+                              y={profile.reservoirY + 7}
+                              fill="#fed7aa"
+                            >
+                              HOT RESERVOIR
+                            </text>
+
+                            <text x="700" y="565" fill="#cbd5e1">
+                              BASEMENT
+                            </text>
+
+                            <text
+                              x={Math.max(300, profile.surfaceX - 55)}
+                              y="355"
+                              fill="#fff1f2"
+                              transform={`rotate(${-(90 - profile.dipDeg)} ${Math.max(300, profile.surfaceX - 55)} 355)`}
+                              fontSize="15"
+                            >
+                              CONCEPTUAL FAULT
+                            </text>
+
+                            <text
+                              x={Math.max(330, profile.reservoirX - 135)}
+                              y="610"
+                              fill="#cffafe"
+                              fontSize="14"
+                            >
+                              CONCEPTUAL HOT-FLUID PATHWAY
+                            </text>
+                          </g>
+
+                          {/* AXIS / SCALE NOTE */}
+
+                          <text
+                            x="55"
+                            y="630"
+                            fill="#94a3b8"
+                            fontFamily="system-ui, -apple-system, sans-serif"
+                            fontSize="13"
+                          >
+                            Depth increases downward — schematic only
+                          </text>
+
+                        </svg>
+
+                      </div>
+
+                    </div>
+
+                    {/* INFORMATION PANEL */}
+
+                    <div className="space-y-3">
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-300">
+                          Selected AI candidate
+                        </div>
+
+                        <div className="mt-3 text-sm font-bold text-white">
+                          Candidate
+                          {subsurfaceCandidate.rank !== undefined
+                            ? ` #${subsurfaceCandidate.rank}`
+                            : ""}
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="rounded-lg bg-black/20 px-3 py-2">
+                            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                              Latitude
+                            </div>
+                            <div className="mt-1 font-mono text-xs text-white">
+                              {subsurfaceCandidate.latitude.toFixed(6)}
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg bg-black/20 px-3 py-2">
+                            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                              Longitude
+                            </div>
+                            <div className="mt-1 font-mono text-xs text-white">
+                              {subsurfaceCandidate.longitude.toFixed(6)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {subsurfaceCandidate.score !== undefined && (
+                          <div className="mt-2 rounded-lg bg-black/20 px-3 py-2">
+                            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                              AI candidate score
+                            </div>
+                            <div className="mt-1 text-sm font-bold text-white">
+                              {subsurfaceCandidate.score.toFixed(6)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">
+                          Approximate geometry
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="rounded-lg bg-black/20 px-3 py-2">
+                            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                              Conceptual strike
+                            </div>
+                            <div className="mt-1 text-xs font-bold text-white">
+                              {profile.strikeDeg}°
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg bg-black/20 px-3 py-2">
+                            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                              Conceptual dip
+                            </div>
+                            <div className="mt-1 text-xs font-bold text-white">
+                              {Math.round(profile.dipDeg)}°
+                            </div>
+                          </div>
+
+                          <div className="col-span-2 rounded-lg bg-black/20 px-3 py-2">
+                            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                              Conceptual reservoir depth
+                            </div>
+                            <div className="mt-1 text-xs font-bold text-white">
+                              ~{profile.reservoirDepthKm.toFixed(1)} km
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">
+                          What the diagram shows
+                        </div>
+
+                        <div className="mt-3 space-y-2 text-xs leading-5 text-slate-300">
+                          <div>
+                            <span className="font-semibold text-red-200">
+                              Red plane:
+                            </span>{" "}
+                            approximate conceptual fault geometry.
+                          </div>
+
+                          <div>
+                            <span className="font-semibold text-cyan-200">
+                              Cyan arrows:
+                            </span>{" "}
+                            conceptual upward hot-fluid pathway.
+                          </div>
+
+                          <div>
+                            <span className="font-semibold text-orange-200">
+                              Orange zone:
+                            </span>{" "}
+                            conceptual hot reservoir.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-300">
+                          Scientific caution
+                        </div>
+
+                        <p className="mt-2 text-xs leading-5 text-slate-300">
+                          This diagram is generated to help interpret the selected AI candidate. Its fault orientation, depth, reservoir and fluid pathway are approximate visualizations; the V1_19 model does not directly measure these underground properties.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={closeSubsurfaceView}
+                        className="w-full rounded-xl bg-[#3157d5] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2647ba]"
+                      >
+                        Return to live map
+                      </button>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
             </div>
+          );
+        })()}
 
-            <div className="mt-2 text-sm font-semibold text-white">
-              {searchInfo.locationName}
-            </div>
-
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-[#07111f] p-4">
-
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">
-              Coordinates
-            </div>
-
-            <div className="mt-2 text-sm font-semibold text-white">
-              {searchInfo.latitude.toFixed(6)},{" "}
-              {searchInfo.longitude.toFixed(6)}
-            </div>
-
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-[#07111f] p-4">
-
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">
-              Search Radius
-            </div>
-
-            <div className="mt-2 text-sm font-semibold text-white">
-              {searchInfo.radiusKm} km
-            </div>
-
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-[#07111f] p-4">
-
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">
-              Nearby Candidates
-            </div>
-
-            <div className="mt-2 text-sm font-semibold text-white">
-              {searchInfo.nearbyCount.toLocaleString()}
-            </div>
-
-          </div>
-
-        </div>
-      )}
-
-    </div>
-  );
-}
+      </div>
+    );
+  }
